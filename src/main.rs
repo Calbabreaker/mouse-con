@@ -27,8 +27,8 @@ fn key_to_controller_event(key: KeyCode) -> Option<uinput::event::Controller> {
         KeyCode::KeyN => Controller::GamePad(GamePad::Select),
         KeyCode::KeyQ => Controller::GamePad(GamePad::TL),
         KeyCode::KeyE => Controller::GamePad(GamePad::TR),
-        KeyCode::KeyG => Controller::GamePad(GamePad::ThumbL),
-        KeyCode::KeyH => Controller::GamePad(GamePad::ThumbR),
+        KeyCode::KeyX => Controller::GamePad(GamePad::ThumbL),
+        KeyCode::KeyG => Controller::GamePad(GamePad::ThumbR),
         KeyCode::ControlLeft => Controller::GamePad(GamePad::TL2),
         KeyCode::KeyI => Controller::DPad(DPad::Up),
         KeyCode::KeyJ => Controller::DPad(DPad::Left),
@@ -64,6 +64,7 @@ fn key_to_position(key: KeyCode) -> Option<(uinput::event::absolute::Position, i
 struct AppState {
     window: Window,
     device: uinput::Device,
+    xbanish_proc: Option<std::process::Child>,
 }
 
 impl AppState {
@@ -97,6 +98,7 @@ impl AppState {
                 .product(0x028e)
                 .vendor(0x110)
                 .create()?,
+            xbanish_proc: None,
         })
     }
 
@@ -133,7 +135,7 @@ impl AppState {
         self.window.set_cursor_visible(false);
         let range = 10. / MOUSE_SENSITIVITY;
         let mut stick_x = map_range(delta.0, -range, range, -127., 128.);
-        let mut stick_y = map_range(delta.1, -range, range, -127., 128.) * 1.2;
+        let mut stick_y = map_range(delta.1, -range, range, -127., 128.) * 1.5;
 
         stick_x = stick_x.signum() * stick_x.abs().sqrt();
         stick_y = stick_y.signum() * stick_y.abs().sqrt();
@@ -146,6 +148,19 @@ impl AppState {
     fn do_recenter(&mut self, pos1: Position, pos2: Position) {
         self.send(Absolute::Position(pos1), 0);
         self.send(Absolute::Position(pos2), 0);
+    }
+
+    fn hide_mouse(&mut self, hide: bool) {
+        if hide {
+            self.xbanish_proc = Command::new("xbanish")
+                .args(["-a", "-i", "mod4", "-m", "se"])
+                .spawn()
+                .inspect_err(|err| eprintln!("Failed to run xbanish: {err}"))
+                .ok();
+        } else if let Some(mut process) = self.xbanish_proc.take() {
+            process.kill().unwrap();
+            process.wait().unwrap();
+        }
     }
 }
 
@@ -164,6 +179,7 @@ impl ApplicationHandler for App {
         // Center joystick
         state.do_recenter(Position::X, Position::Y);
         state.do_recenter(Position::RX, Position::RY);
+        state.hide_mouse(true);
         self.state = Some(state);
     }
 
@@ -210,11 +226,15 @@ impl ApplicationHandler for App {
             }
             winit::event::DeviceEvent::Key(event) => {
                 if let PhysicalKey::Code(key) = event.physical_key {
-                    if key == KeyCode::Delete {
-                        event_loop.exit();
-                        return;
+                    match key {
+                        KeyCode::Delete => event_loop.exit(),
+                        KeyCode::Escape => {
+                            if event.state.is_pressed() {
+                                state.hide_mouse(state.xbanish_proc.is_none());
+                            }
+                        }
+                        key => state.do_key(key, event.state.is_pressed()),
                     }
-                    state.do_key(key, event.state.is_pressed());
                 }
             }
             winit::event::DeviceEvent::Added {} => {}
@@ -223,11 +243,6 @@ impl ApplicationHandler for App {
     }
 }
 fn main() {
-    let mut process = Command::new("xbanish")
-        .args(["-a", "-i", "mod4", "-m", "se"])
-        .spawn()
-        .inspect_err(|err| eprintln!("Failed to run xbanish: {err}"));
-
     let event_loop = EventLoop::new().unwrap();
 
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -236,9 +251,4 @@ fn main() {
     event_loop
         .run_app(&mut app)
         .expect("Failed to create window");
-
-    if let Ok(process) = process.as_mut() {
-        process.kill().unwrap();
-        process.wait().unwrap();
-    }
 }
