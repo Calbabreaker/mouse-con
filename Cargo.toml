@@ -1,0 +1,10 @@
+[package]
+name = "mouse_con"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.92"
+uinput = "0.1.3"
+winit = "0.30.5"
+x11rb = {version="0.13.1", features = [ "all-extensions" ]}
