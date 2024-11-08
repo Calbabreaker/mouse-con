@@ -227,8 +227,11 @@ impl ApplicationHandler for App {
             winit::event::DeviceEvent::Key(event) => {
                 if let PhysicalKey::Code(key) = event.physical_key {
                     match key {
-                        KeyCode::Delete => event_loop.exit(),
-                        KeyCode::Escape => {
+                        KeyCode::Delete => {
+                            state.hide_mouse(false);
+                            event_loop.exit()
+                        }
+                        KeyCode::Backslash => {
                             if event.state.is_pressed() {
                                 state.hide_mouse(state.xbanish_proc.is_none());
                             }
@@ -237,7 +240,6 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            winit::event::DeviceEvent::Added {} => {}
             _ => (),
         }
     }
