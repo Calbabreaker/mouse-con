@@ -1,5 +1,6 @@
 use std::{process::Command, time::Duration};
 
+use anyhow::Context;
 use uinput::event::{
     absolute::Position,
     controller::{DPad, GamePad},
@@ -11,10 +12,7 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::PhysicalKey,
 };
-use winit::{
-    keyboard::KeyCode,
-    window::{Window, WindowId},
-};
+use winit::{keyboard::KeyCode, window::WindowId};
 
 const MOUSE_SENSITIVITY: f64 = 250.;
 
@@ -62,16 +60,15 @@ fn key_to_position(key: KeyCode) -> Option<(uinput::event::absolute::Position, i
 }
 
 struct AppState {
-    window: Window,
     device: uinput::Device,
     xbanish_proc: Option<std::process::Child>,
 }
 
 impl AppState {
-    fn new(event_loop: &ActiveEventLoop) -> anyhow::Result<Self> {
+    fn new() -> anyhow::Result<Self> {
         Ok(Self {
-            window: event_loop.create_window(Window::default_attributes().with_visible(false))?,
-            device: uinput::default()?
+            device: uinput::default()
+                .context("Did you forget to enable uinput kernel module?")?
                 .name("Microsoft X-Box 360 pad")?
                 .event(uinput::event::Controller::All)?
                 .event(uinput::event::Absolute::Position(Position::Y))?
@@ -132,7 +129,6 @@ impl AppState {
     }
 
     fn do_mouse_move(&mut self, delta: (f64, f64)) {
-        self.window.set_cursor_visible(false);
         let range = 10. / MOUSE_SENSITIVITY;
         let mut stick_x = map_range(delta.0, -range, range, -127., 128.);
         let mut stick_y = map_range(delta.1, -range, range, -127., 128.) * 1.5;
@@ -174,8 +170,8 @@ struct App {
 }
 
 impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let mut state = AppState::new(event_loop).expect("Failed to create data");
+    fn resumed(&mut self, _: &ActiveEventLoop) {
+        let mut state = AppState::new().expect("Failed to create data");
         // Center joystick
         state.do_recenter(Position::X, Position::Y);
         state.do_recenter(Position::RX, Position::RY);
@@ -183,12 +179,7 @@ impl ApplicationHandler for App {
         self.state = Some(state);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
-        if event == WindowEvent::CloseRequested {
-            println!("The close button was pressed; stopping");
-            event_loop.exit();
-        }
-    }
+    fn window_event(&mut self, _: &ActiveEventLoop, _: WindowId, _: WindowEvent) {}
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: winit::event::StartCause) {
         let state = match self.state.as_mut() {
