@@ -2,7 +2,7 @@ use std::{process::Command, time::Duration};
 
 use anyhow::Context;
 use uinput::event::{
-    absolute::Position,
+    absolute::{Digi, Position},
     controller::{DPad, GamePad},
     Absolute, Controller,
 };
@@ -16,7 +16,7 @@ use winit::{keyboard::KeyCode, window::WindowId};
 
 const MOUSE_SENSITIVITY: f64 = 250.;
 
-fn key_to_controller_event(key: KeyCode) -> Option<uinput::event::Controller> {
+fn key_to_controller_event(key: KeyCode) -> Option<Controller> {
     Some(match key {
         KeyCode::KeyC => Controller::GamePad(GamePad::B),
         KeyCode::Space => Controller::GamePad(GamePad::Y),
@@ -41,7 +41,7 @@ fn key_to_controller_event(key: KeyCode) -> Option<uinput::event::Controller> {
     })
 }
 
-fn mouse_button_to_controller_event(button: u32) -> Option<uinput::event::Controller> {
+fn mouse_button_to_controller_event(button: u32) -> Option<Controller> {
     Some(match button {
         1 => Controller::GamePad(GamePad::X),
         3 => Controller::GamePad(GamePad::TR2),
@@ -66,35 +66,33 @@ struct AppState {
 
 impl AppState {
     fn new() -> anyhow::Result<Self> {
+        let mut builder = uinput::default()
+            .context("Did you forget to enable uinput kernel module?")?
+            .name("Microsoft X-Box 360 pad")?
+            .vendor(0x045e)
+            .product(0x028e)
+            .vendor(0x110)
+            .event(Controller::All)?;
+
+        fn add_pos_event(
+            device_builder: uinput::device::Builder,
+            event: impl Into<uinput::Event>,
+        ) -> anyhow::Result<uinput::device::Builder> {
+            Ok(device_builder
+                .event(event)?
+                .min(-127)
+                .max(128)
+                .flat(0)
+                .fuzz(0))
+        }
+
+        builder = add_pos_event(builder, Absolute::Position(Position::X))?;
+        builder = add_pos_event(builder, Absolute::Position(Position::Y))?;
+        builder = add_pos_event(builder, Absolute::Position(Position::RX))?;
+        builder = add_pos_event(builder, Absolute::Position(Position::RY))?;
+
         Ok(Self {
-            device: uinput::default()
-                .context("Did you forget to enable uinput kernel module?")?
-                .name("Microsoft X-Box 360 pad")?
-                .event(uinput::event::Controller::All)?
-                .event(uinput::event::Absolute::Position(Position::Y))?
-                .min(-127)
-                .max(128)
-                .flat(0)
-                .fuzz(0)
-                .event(uinput::event::Absolute::Position(Position::X))?
-                .min(-127)
-                .max(128)
-                .flat(0)
-                .fuzz(0)
-                .event(uinput::event::Absolute::Position(Position::RX))?
-                .min(-127)
-                .max(128)
-                .flat(0)
-                .fuzz(0)
-                .event(uinput::event::Absolute::Position(Position::RY))?
-                .min(-127)
-                .max(128)
-                .flat(0)
-                .fuzz(0)
-                .vendor(0x045e)
-                .product(0x028e)
-                .vendor(0x110)
-                .create()?,
+            device: builder.create()?,
             xbanish_proc: None,
         })
     }
