@@ -1,8 +1,8 @@
-use std::{process::Command, time::Duration};
+use std::{collections::HashMap, process::Command, time::Duration};
 
 use anyhow::Context;
 use uinput::event::{
-    absolute::{Digi, Position},
+    absolute::Position,
     controller::{DPad, GamePad},
     Absolute, Controller,
 };
@@ -62,6 +62,7 @@ fn key_to_position(key: KeyCode) -> Option<(uinput::event::absolute::Position, i
 struct AppState {
     device: uinput::Device,
     xbanish_proc: Option<std::process::Child>,
+    position_held_map: HashMap<Position, Vec<i32>>,
 }
 
 impl AppState {
@@ -94,6 +95,7 @@ impl AppState {
         Ok(Self {
             device: builder.create()?,
             xbanish_proc: None,
+            position_held_map: HashMap::default(),
         })
     }
 
@@ -111,10 +113,17 @@ impl AppState {
 
     fn do_key(&mut self, key: winit::keyboard::KeyCode, pressed: bool) {
         if let Some((position, value)) = key_to_position(key) {
-            self.send(
-                Absolute::Position(position),
-                if pressed { value } else { 0 },
-            );
+            let position_helds = self.position_held_map.entry(position).or_default();
+            if pressed {
+                position_helds.push(value);
+            } else {
+                while let Some(i) = position_helds.iter().position(|v| *v == value) {
+                    position_helds.remove(i);
+                }
+            }
+
+            let sum = position_helds.iter().sum();
+            self.send(Absolute::Position(position), sum);
         } else if let Some(uinput_event) = key_to_controller_event(key) {
             self.send(uinput_event, if pressed { 1 } else { 0 });
         }
