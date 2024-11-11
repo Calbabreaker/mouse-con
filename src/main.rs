@@ -100,6 +100,10 @@ impl AppState {
     }
 
     fn send(&mut self, event: impl Into<uinput::Event>, value: i32) {
+        if !self.mouse_hiding() {
+            return;
+        }
+
         let event = event.into();
         // eprintln!("Sending: {:?}, {value}", event);
         if let Err(err) = self.device.send(event, value) {
@@ -164,6 +168,10 @@ impl AppState {
             process.kill().unwrap();
             process.wait().unwrap();
         }
+    }
+
+    fn mouse_hiding(&self) -> bool {
+        self.xbanish_proc.is_some()
     }
 }
 
@@ -231,7 +239,7 @@ impl ApplicationHandler for App {
                         }
                         KeyCode::Backslash => {
                             if event.state.is_pressed() {
-                                state.hide_mouse(state.xbanish_proc.is_none());
+                                state.hide_mouse(!state.mouse_hiding());
                             }
                         }
                         key => state.do_key(key, event.state.is_pressed()),
